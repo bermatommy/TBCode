@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TBCode Forum</title>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f4f4f4; padding: 20px; }
+        table { width: 100%; border-collapse: collapse; background: white; }
+        th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }
+        th { background-color: #4CAF50; color: white; }
+    </style>
+</head>
+<body>
+    <h1>TBCode Forum - Errors & Solutions</h1>
+    <table>
+        <tr>
+            <th>Error</th>
+            <th>Solution</th>
+            <th>Score</th>
+        </tr>
+        {% for row in errors %}
+        <tr>
+            <td>{{ row.Header }}</td>
+            <td>{{ row.CodeSolution }}</td>
+            <td>{{ row.SolutionScore }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+</body>
+</html>
