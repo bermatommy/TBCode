@@ -27,6 +27,7 @@ CREATE TABLE Solutions (
     Description TEXT,
     SolutionScore INT DEFAULT 0, -- Default score to 0
     ScoreTimes INT DEFAULT 0, -- Default score to 0
+    Relevance INT DEFAULT 0, -- Default relevance to 0
     FOREIGN KEY (ErrorID) REFERENCES Errors(ErrorID) ON DELETE CASCADE,
     FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE
 );

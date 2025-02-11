@@ -12,6 +12,10 @@ public class LoginRegister {
     private static Connection con;
     private static Stage registerStage;
 
+    public static Connection getConnection() {
+        return con; // Ensure connection is managed correctly
+    }
+
     public static void connect(String username, String password) {
         try {
             Class.forName("com.mysql.cj.jdbc.Driver");
@@ -108,12 +112,17 @@ public class LoginRegister {
 
     public static boolean isConnected() {
         try {
-            return (con != null && !con.isClosed());
+            if (con == null || con.isClosed()) {
+                System.out.println("Database is NOT connected!");
+                return false;
+            }
+            return true;
         } catch (SQLException e) {
             e.printStackTrace();
             return false;
         }
     }
+    
 
     public static Scene setupLoginScene(Stage primaryStage, Scene homeScene) {
         VBox loginBox = new VBox(10);
@@ -174,7 +183,7 @@ public class LoginRegister {
     public static Solution getBestMatchingSolution(String errorHeader) {
         if (!isConnected()) return null;
     
-        String sql = "SELECT s.SolutionID, s.CodeSolution, s.Description, s.SolutionScore, s.ScoreTimes " +
+        String sql = "SELECT s.SolutionID, s.CodeSolution, s.Description, s.SolutionScore, s.ScoreTimes, s.Relevance " +
                  "FROM Solutions s " +
                  "JOIN Errors e ON s.ErrorID = e.ErrorID " +
                  "WHERE e.Header LIKE ? " +
@@ -191,7 +200,8 @@ public class LoginRegister {
                     rs.getString("CodeSolution"),
                     rs.getString("Description"),
                     rs.getInt("SolutionScore"),
-                    rs.getInt("ScoreTimes")
+                    rs.getInt("ScoreTimes"),
+                    rs.getInt("Relevance")
                 );
             }
         } catch (SQLException e) {
@@ -220,11 +230,65 @@ public class LoginRegister {
         return false;
     }
 
+    public static Solution getSolutionByID(int solutionID) {
+        if (!isConnected()) return null;
+    
+        String sql = "SELECT SolutionID, CodeSolution, Description, SolutionScore, ScoreTimes, Relevance " +
+                     "FROM Solutions WHERE SolutionID = ?";
+    
+        try (PreparedStatement pstmt = con.prepareStatement(sql)) {
+            pstmt.setInt(1, solutionID);
+            ResultSet rs = pstmt.executeQuery();
+    
+            if (rs.next()) {
+                return new Solution(
+                    rs.getInt("SolutionID"),
+                    rs.getString("CodeSolution"),
+                    rs.getString("Description"),
+                    rs.getInt("SolutionScore"),
+                    rs.getInt("ScoreTimes"),
+                    rs.getDouble("Relevance")
+                );
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+    
+
+    public static Solution getSolution(int solutionID) {
+        if (!isConnected()) return null;
+    
+        String sql = "SELECT SolutionID, CodeSolution, Description, SolutionScore, ScoreTimes, Relevance " +
+                     "FROM Solutions WHERE SolutionID = ?";
+    
+        try (PreparedStatement pstmt = con.prepareStatement(sql)) {
+            pstmt.setInt(1, solutionID);
+            ResultSet rs = pstmt.executeQuery();
+    
+            if (rs.next()) {
+                return new Solution(
+                    rs.getInt("SolutionID"),
+                    rs.getString("CodeSolution"),
+                    rs.getString("Description"),
+                    rs.getInt("SolutionScore"),
+                    rs.getInt("ScoreTimes"),
+                    rs.getDouble("Relevance")
+                );
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+    
+
     // Fetch the best solution for a given error
     public static Solution getBestSolution(String errorHeader) {
         if (!isConnected()) return null;
 
-        String sql = "SELECT s.SolutionID, s.CodeSolution, s.Description, s.SolutionScore, s.ScoreTimes " +
+        String sql = "SELECT s.SolutionID, s.CodeSolution, s.Description, s.SolutionScore, s.ScoreTimes, s.Relevance " +
                     "FROM Solutions s " +
                     "JOIN Errors e ON s.ErrorID = e.ErrorID " +
                     "WHERE e.Header LIKE ? " +
@@ -241,7 +305,8 @@ public class LoginRegister {
                     rs.getString("CodeSolution"),
                     rs.getString("Description"),
                     rs.getInt("SolutionScore"),
-                    rs.getInt("ScoreTimes")
+                    rs.getInt("ScoreTimes"),
+                    rs.getDouble("Relevance")
                 );
             }
         } catch (SQLException e) {
@@ -287,29 +352,32 @@ public class LoginRegister {
     }
 
 
-    public static List<String> getSolutionsForError(int errorId) {
-        List<String> solutions = new ArrayList<>();
+    public static List<Solution> getSolutionsForError(int errorId) {
+        List<Solution> solutions = new ArrayList<>();
         if (!isConnected()) return solutions;
     
-        // Ensure ScoreTimes is included in the SELECT query
-        String sql = "SELECT CodeSolution, SolutionScore, ScoreTimes FROM Solutions WHERE ErrorID = ? ORDER BY SolutionScore DESC";
+        String sql = "SELECT SolutionID, CodeSolution, Description, SolutionScore, ScoreTimes, Relevance FROM Solutions WHERE ErrorID = ?";
     
         try (PreparedStatement pstmt = con.prepareStatement(sql)) {
             pstmt.setInt(1, errorId);
             ResultSet rs = pstmt.executeQuery();
             
             while (rs.next()) {
-                String solutionCode = rs.getString("CodeSolution");
-                int score = rs.getInt("SolutionScore");
-                int reviewCount = rs.getInt("ScoreTimes");  // Now correctly retrieving ScoreTimes
-    
-                solutions.add(solutionCode + "\n Score: " + score + "\n Reviews: " + reviewCount);
+                solutions.add(new Solution(
+                    rs.getInt("SolutionID"),
+                    rs.getString("CodeSolution"),
+                    rs.getString("Description"),
+                    rs.getInt("SolutionScore"),
+                    rs.getInt("ScoreTimes"),
+                    rs.getDouble("Relevance")
+                ));
             }
         } catch (SQLException e) {
             e.printStackTrace();
         }
         return solutions;
     }
+    
     
     
 

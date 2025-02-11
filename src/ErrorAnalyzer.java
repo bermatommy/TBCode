@@ -1,9 +1,43 @@
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
 import java.util.*;
-import java.util.stream.Collectors;
 
 public class ErrorAnalyzer {
-    private List<ErrorData> errorDatabase = new ArrayList<>();
+    public void updateSolutionRelevanceInDB(String errorHeader, String outputConsole, String userCode,String userDescription, List<Solution> solutions) {
+        try (Connection con = LoginRegister.getConnection()) { // Ensure DB connection is retrieved
+            String updateQuery = "UPDATE Solutions SET Relevance = ? WHERE SolutionID = ?";
+            PreparedStatement pstmt = con.prepareStatement(updateQuery);
 
+            for (Solution solution : solutions) {
+                // Compute similarity based on error message, console output, and user code
+                double relevance = computeRelevance(errorHeader, outputConsole, userCode, userDescription, solution);
+                solution.setRelevance(relevance); // Update in Java
+
+                // Store relevance in the database
+                pstmt.setDouble(1, relevance);
+                pstmt.setInt(2, solution.getSolutionID());
+                pstmt.addBatch();
+            }
+            pstmt.executeBatch(); // Execute all updates in one go
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private double computeRelevance(String errorHeader, String outputConsole, String userCode, String userDescription, Solution solution) {
+        double errorSimilarity = cosineSimilarity(errorHeader, solution.getDescription());
+        double outputSimilarity = cosineSimilarity(outputConsole, solution.getDescription());
+        double codeSimilarity = cosineSimilarity(userCode, solution.getCodeSolution());
+        double descriptionSimilarity = cosineSimilarity(userDescription, solution.getDescription());
+    
+        // Weighted sum: Error header (30%), Output console (20%), Code (25%), User description (25%)
+        return (0.3 * errorSimilarity) + (0.2 * outputSimilarity) + (0.25 * codeSimilarity) + (0.25 * descriptionSimilarity);
+    }
+    
+
+    private List<ErrorData> errorDatabase = new ArrayList<>();
+    
     public void addError(String errorMessage, String solution) {
         errorDatabase.add(new ErrorData(errorMessage, solution));
     }
@@ -66,7 +100,7 @@ public class ErrorAnalyzer {
 
     private Map<String, Integer> getWordFrequency(String text) {
         Map<String, Integer> freq = new HashMap<>();
-        for (String word : text.toLowerCase().split("\\\\W+")) {
+        for (String word : text.toLowerCase().split("\\W+")) {
             freq.put(word, freq.getOrDefault(word, 0) + 1);
         }
         return freq;
@@ -84,21 +118,37 @@ public class ErrorAnalyzer {
         }
     }
 
-    public List<String> orderSolutions(String errorHeader, List<String> solutions) {
-        return solutions.stream()
-                .sorted((s1, s2) -> relevanceScore(errorHeader, s2) - relevanceScore(errorHeader, s1)) // Sort by score
-                .collect(Collectors.toList());
+    public List<Solution> orderSolutions(String errorHeader, List<Solution> solutions) {
+        // Calculate relevance scores
+        for (Solution solution : solutions) {
+            double relevance = cosineSimilarity(errorHeader, solution.getDescription());
+            solution.setRelevance(relevance);
+        }
+
+        // Sort by relevance first
+        solutions.sort((s1, s2) -> Double.compare(s2.getRelevance(), s1.getRelevance()));
+
+        // If relevance > threshold (0.7), sort by score
+        double threshold = 0.7;
+        solutions.sort((s1, s2) -> {
+            if (s1.getRelevance() >= threshold && s2.getRelevance() >= threshold) {
+                return Integer.compare(s2.getSolutionScore(), s1.getSolutionScore()); // Sort by score
+            }
+            return Double.compare(s2.getRelevance(), s1.getRelevance()); // Sort by relevance
+        });
+
+        return solutions;
     }
 
     // 🔹 Computes a basic relevance score (more advanced NLP could be used)
-    private int relevanceScore(String error, String solution) {
-        int score = 0;
-        if (solution.toLowerCase().contains(error.toLowerCase())) {
-            score += 10; // Higher score if the solution directly mentions the error
-        }
-        if (solution.length() < 150) {
-            score += 5; // Prefer shorter solutions (more concise)
-        }
-        return score;
-    }
+    // private int relevanceScore(String error, String solution) {
+    //     int score = 0;
+    //     if (solution.toLowerCase().contains(error.toLowerCase())) {
+    //         score += 10; // Higher score if the solution directly mentions the error
+    //     }
+    //     if (solution.length() < 150) {
+    //         score += 5; // Prefer shorter solutions (more concise)
+    //     }
+    //     return score;
+    // }
 }

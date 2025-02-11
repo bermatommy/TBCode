@@ -13,7 +13,10 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.awt.Desktop;
 
 public class TBCodeEditor extends Application {
@@ -21,7 +24,6 @@ public class TBCodeEditor extends Application {
     private TextArea codeEditor;
     private TextArea lineNumbers;
     private Scene homeScene;
-    private ErrorAnalyzer errorAnalyzer = new ErrorAnalyzer();
     private ListView<String> errorList;
     private ListView<String> solutionsList;
     private Button runButton;
@@ -91,8 +93,8 @@ public class TBCodeEditor extends Application {
         updateLineNumbers(null);
         loadLastCode();
 
-        Button openSolutionButton = new Button("Open Solution");
-        openSolutionButton.setOnAction(e -> openSolutionWindow());
+        Button openSolutionButton = new Button("Open Best Solution");
+        openSolutionButton.setOnAction(e -> openBestSolutionWindow());
 
 
         runButton.setStyle("-fx-background-color: #4CAF50; -fx-text-fill: black;");
@@ -172,7 +174,8 @@ public class TBCodeEditor extends Application {
 
     private void openForumPage() {
         try {
-            Desktop.getDesktop().browse(new URI("http://127.0.0.1:5000/")); // Open local Flask webpage
+            Desktop.getDesktop().browse(new URI("http://127.0.0.1:5000/")); // Open local Flask webpage https://tbcode.onrender.com
+            //Desktop.getDesktop().browse(new URI("https://tbcode.onrender.com")); // Open local Flask webpage
         } catch (Exception e) {
             e.printStackTrace();
             showAlert("Error", "Could not open the forum webpage.");
@@ -203,15 +206,50 @@ public class TBCodeEditor extends Application {
     private void populateSolutions(String errorHeader) {
         solutionsList.getItems().clear();
         int errorId = LoginRegister.getErrorIdByHeader(errorHeader);
-        List<String> solutions = errorAnalyzer.orderSolutions(errorHeader, LoginRegister.getSolutionsForError(errorId));
+
+        // Ask user to describe the solution they are looking for
+        TextInputDialog dialog = new TextInputDialog("");
+        dialog.setTitle("Describe Your Solution");
+        dialog.setHeaderText("Describe what kind of solution you're looking for.");
+        dialog.setContentText("Solution description:");
+
+        Optional<String> result = dialog.showAndWait();
+        String userDescription = result.orElse("");
+
+        List<Solution> solutions = LoginRegister.getSolutionsForError(errorId);
+
+        // Compute updated relevance scores using ErrorAnalyzer
+        ErrorAnalyzer errorAnalyzer = new ErrorAnalyzer();
+        errorAnalyzer.updateSolutionRelevanceInDB(
+            errorHeader,
+            outputConsole.getText(),
+            codeEditor.getText(),
+            userDescription,
+            solutions
+        );
+
         Platform.runLater(() -> {
             if (solutions.isEmpty()) {
                 solutionsList.getItems().add("No solutions available.");
             } else {
-                solutionsList.getItems().addAll(solutions);
+                for (Solution solution : solutions) {
+                    String solutionText = "Relevance: " + String.format("%.2f", solution.getRelevance()) +
+                                        " | Score: " + solution.getSolutionScore() +
+                                        "\n" + solution.getCodeSolution() + 
+                                        "\nSolutionID: " + solution.getSolutionID();
+                    solutionsList.getItems().add(solutionText);
+                }
             }
         });
-    }      
+
+        solutionsList.setOnMouseClicked(event -> {
+            if (event.getClickCount() == 2) { // Double-click detected
+                openSelectedSolution();
+            }
+        });
+    }
+
+         
 
     private void runCodeInBackground() {
         outputConsole.clear();
@@ -295,7 +333,123 @@ public class TBCodeEditor extends Application {
         settingsStage.show();
     }
 
-    private void openSolutionWindow() {
+    private int extractSolutionID(String solutionText) {
+        try {
+            System.out.println("Extracting SolutionID from: " + solutionText); // Debugging log
+    
+            // Normalize line breaks
+            solutionText = solutionText.replace("\n", " ").trim();
+    
+            // Ensure "SolutionID:" exists before proceeding
+            if (!solutionText.contains("SolutionID:")) {
+                System.out.println("Error: Solution text does not contain 'SolutionID:'.");
+                return -1;
+            }
+    
+            // Match the pattern "SolutionID: <number>"
+            Pattern pattern = Pattern.compile("SolutionID:\\s*(\\d+)");
+            Matcher matcher = pattern.matcher(solutionText);
+    
+            if (matcher.find()) {
+                int solutionID = Integer.parseInt(matcher.group(1));
+                System.out.println("Extracted SolutionID: " + solutionID);
+                return solutionID;
+            } else {
+                System.out.println("Pattern match failed.");
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        System.out.println("Failed to extract SolutionID");
+        return -1;
+    }
+    
+
+    
+
+    private void openSelectedSolution() {
+        // Get the selected solution from the ListView
+        String selectedSolutionText = solutionsList.getSelectionModel().getSelectedItem();
+    
+        if (selectedSolutionText == null) {
+            showAlert("No Solution Selected", "Please select a solution to view.");
+            return;
+        }
+    
+        // Extract SolutionID from the selected text
+        int solutionID = extractSolutionID(selectedSolutionText);
+    
+        if (solutionID == -1) {
+            showAlert("Error", "Could not extract Solution ID.");
+            return;
+        }
+
+        if (!LoginRegister.isConnected()) {
+            System.out.println("Reconnecting to database...");
+            LoginRegister.connect("root", "1234"); // Change credentials if necessary
+        }
+    
+        // Fetch the selected solution from the database
+        Solution selectedSolution = LoginRegister.getSolutionByID(solutionID);
+    
+        if (selectedSolution == null) {
+            showAlert("No Solution Found", "This solution is no longer available.");
+            return;
+        }
+    
+        // Create the solution window
+        Stage solutionStage = new Stage();
+        solutionStage.setTitle("Solution Details");
+    
+        Label solutionLabel = new Label("Solution Code:");
+        TextArea solutionCodeArea = new TextArea(selectedSolution.getCodeSolution());
+        solutionCodeArea.setEditable(false);
+    
+        Label descriptionLabel = new Label("Description:");
+        TextArea solutionDescriptionArea = new TextArea(selectedSolution.getDescription());
+        solutionDescriptionArea.setEditable(false);
+    
+        Label scoreLabel = new Label("Current Score: " + selectedSolution.getSolutionScore());
+    
+        Label rateLabel = new Label("Rate this solution (1-100):");
+        TextField rateField = new TextField();
+        rateField.setPromptText("Enter a rating...");
+    
+        Button rateButton = new Button("Submit Rating");
+        rateButton.setOnAction(e -> {
+            try {
+                int rating = Integer.parseInt(rateField.getText().trim());
+                if (rating < 1 || rating > 100) {
+                    showAlert("Invalid Rating", "Please enter a number between 1 and 100.");
+                    return;
+                }
+    
+                // Update solution score in database
+                LoginRegister.updateSolutionScore(selectedSolution.getSolutionID(), rating);
+    
+                // Fetch updated solution details
+                Solution updatedSolution = LoginRegister.getSolutionByID(solutionID);
+    
+                // Refresh score display
+                scoreLabel.setText("Current Score: " + updatedSolution.getSolutionScore() +
+                                   " (Based on " + updatedSolution.getScoreTimes() + " reviews)");
+    
+                showAlert("Success", "Your rating has been submitted!");
+            } catch (NumberFormatException ex) {
+                showAlert("Invalid Input", "Please enter a valid number between 1 and 100.");
+            }
+        });
+    
+        VBox layout = new VBox(10, solutionLabel, solutionCodeArea, descriptionLabel, solutionDescriptionArea, scoreLabel, rateLabel, rateField, rateButton);
+        layout.setPadding(new Insets(20));
+    
+        Scene scene = new Scene(layout, 600, 400);
+        solutionStage.setScene(scene);
+        solutionStage.show();
+    }    
+    
+
+    private void openBestSolutionWindow() {
         String selectedError = errorList.getSelectionModel().getSelectedItem();
         
         if (selectedError == null) {

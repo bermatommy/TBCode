@@ -23,7 +23,6 @@ public class TicketWindow {
         Label errorLabel = new Label("Encountered Error/Exception:");
         errorLabel.setStyle("-fx-text-fill: white;");
         TextField errorField = new TextField(errorMessage); // Set default value
-        errorField.setEditable(false);
 
         // Output Console Field (Full error details)
         Label outputLabel = new Label("Output Console:");
