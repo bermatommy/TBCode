@@ -4,26 +4,45 @@ import java.sql.SQLException;
 import java.util.*;
 
 public class ErrorAnalyzer {
-    public void updateSolutionRelevanceInDB(String errorHeader, String outputConsole, String userCode,String userDescription, List<Solution> solutions) {
-        try (Connection con = LoginRegister.getConnection()) { // Ensure DB connection is retrieved
+    public void updateSolutionRelevanceInDB(String errorHeader, String outputConsole, String userCode, String userDescription, List<Solution> solutions) {
+        Connection con = null;
+        PreparedStatement pstmt = null;
+    
+        try {
+            con = LoginRegister.getConnection();
+    
+            // If connection is null or closed, reconnect and retrieve a new one
+            if (con == null || con.isClosed()) {
+                System.out.println("Database connection is closed! Reconnecting...");
+                LoginRegister.connect("root", "1234");  // Connects to DB
+                con = LoginRegister.getConnection();    // Retrieves the connection again
+            }
+    
+            if (con == null) {
+                System.out.println("Failed to establish database connection.");
+                return; // Exit method if no connection is available
+            }
+    
             String updateQuery = "UPDATE Solutions SET Relevance = ? WHERE SolutionID = ?";
-            PreparedStatement pstmt = con.prepareStatement(updateQuery);
-
+            pstmt = con.prepareStatement(updateQuery);
+    
             for (Solution solution : solutions) {
-                // Compute similarity based on error message, console output, and user code
                 double relevance = computeRelevance(errorHeader, outputConsole, userCode, userDescription, solution);
-                solution.setRelevance(relevance); // Update in Java
-
-                // Store relevance in the database
+                solution.setRelevance(relevance);
+    
                 pstmt.setDouble(1, relevance);
                 pstmt.setInt(2, solution.getSolutionID());
                 pstmt.addBatch();
             }
-            pstmt.executeBatch(); // Execute all updates in one go
+    
+            pstmt.executeBatch();
+    
         } catch (SQLException e) {
             e.printStackTrace();
         }
     }
+    
+    
 
     private double computeRelevance(String errorHeader, String outputConsole, String userCode, String userDescription, Solution solution) {
         double errorSimilarity = cosineSimilarity(errorHeader, solution.getDescription());
@@ -129,7 +148,7 @@ public class ErrorAnalyzer {
         solutions.sort((s1, s2) -> Double.compare(s2.getRelevance(), s1.getRelevance()));
 
         // If relevance > threshold (0.7), sort by score
-        double threshold = 0.7;
+        double threshold = 0.1;
         solutions.sort((s1, s2) -> {
             if (s1.getRelevance() >= threshold && s2.getRelevance() >= threshold) {
                 return Integer.compare(s2.getSolutionScore(), s1.getSolutionScore()); // Sort by score

@@ -11,6 +11,7 @@ import java.io.*;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -201,23 +202,28 @@ public class TBCodeEditor extends Application {
                 }
             }
         });
-    }    
-
-    private void populateSolutions(String errorHeader) {
-        solutionsList.getItems().clear();
-        int errorId = LoginRegister.getErrorIdByHeader(errorHeader);
-
-        // Ask user to describe the solution they are looking for
+    }
+    
+    private String askUserForDescription(){
         TextInputDialog dialog = new TextInputDialog("");
         dialog.setTitle("Describe Your Solution");
         dialog.setHeaderText("Describe what kind of solution you're looking for.");
         dialog.setContentText("Solution description:");
-
         Optional<String> result = dialog.showAndWait();
         String userDescription = result.orElse("");
+        return userDescription;
+    }
 
+    private void populateSolutions(String errorHeader) {
+        solutionsList.getItems().clear();
+        int errorId = LoginRegister.getErrorIdByHeader(errorHeader);
         List<Solution> solutions = LoginRegister.getSolutionsForError(errorId);
-
+        // Ask user to describe the solution they are looking for
+        String userDescription = "";
+        if(!solutions.isEmpty()){
+            userDescription = askUserForDescription();
+        }
+        
         // Compute updated relevance scores using ErrorAnalyzer
         ErrorAnalyzer errorAnalyzer = new ErrorAnalyzer();
         errorAnalyzer.updateSolutionRelevanceInDB(
@@ -232,6 +238,13 @@ public class TBCodeEditor extends Application {
             if (solutions.isEmpty()) {
                 solutionsList.getItems().add("No solutions available.");
             } else {
+                // 🔹 Sort solutions by relevance (desc), then by score (desc)
+                solutions.sort(Comparator
+                    .comparingDouble(Solution::getRelevance)
+                    .thenComparingInt(Solution::getSolutionScore)
+                    .reversed());
+
+                // 🔹 Populate the solutions list after sorting
                 for (Solution solution : solutions) {
                     String solutionText = "Relevance: " + String.format("%.2f", solution.getRelevance()) +
                                         " | Score: " + solution.getSolutionScore() +
@@ -241,6 +254,7 @@ public class TBCodeEditor extends Application {
                 }
             }
         });
+
 
         solutionsList.setOnMouseClicked(event -> {
             if (event.getClickCount() == 2) { // Double-click detected

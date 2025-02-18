@@ -16,17 +16,20 @@ public class LoginRegister {
         return con; // Ensure connection is managed correctly
     }
 
-    public static void connect(String username, String password) {
+    public static Connection connect(String username, String password) {
         try {
             Class.forName("com.mysql.cj.jdbc.Driver");
             con = DriverManager.getConnection(
                 "jdbc:mysql://localhost:3306/tbcode?useSSL=false&allowPublicKeyRetrieval=true",
                 username, password
             );
+            return con;
         } catch (Exception e) {
             e.printStackTrace();
+            return null;
         }
     }
+    
 
     public static void disconnect() {
         try {
@@ -382,6 +385,7 @@ public class LoginRegister {
     
 
     public static int getErrorIdByHeader(String header) {
+        if(!isConnected()) return -1;
         int errorId = -1;
         String sql = "SELECT ErrorID FROM Errors WHERE Header = ?";
         try (PreparedStatement pstmt = con.prepareStatement(sql)) {
